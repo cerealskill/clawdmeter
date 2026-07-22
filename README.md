@@ -12,6 +12,16 @@ windows in real time — pushed straight from your Claude Code status line.
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Status](https://img.shields.io/badge/status-working-brightgreen)
 
+<br />
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/img/splash.png" alt="Splash view — animated Clawd mascot asleep on a green face" /><br /><sub><b>Splash</b> · Clawd asleep (green &lt;20%)</sub></td>
+    <td align="center" width="33%"><img src="docs/img/session.png" alt="Session view — cost, context, model and line counts" /><br /><sub><b>Session</b> · cost · context · lines</sub></td>
+    <td align="center" width="33%"><img src="docs/img/trend.png" alt="Trend view — sparkline of 5h and weekly usage" /><br /><sub><b>Trend</b> · 5h &amp; weekly sparkline</sub></td>
+  </tr>
+</table>
+
 </div>
 
 ---
