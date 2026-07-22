@@ -261,7 +261,7 @@ def draw_cc_logo(d, cx, cy, px, color=CC_TERRA):
 
 
 # ---------- USAGE view ----------
-def draw_card(d, y0, pct, label, bar_color, reset_txt):
+def draw_card(d, img, y0, pct, label, bar_color, reset_txt, rainbow_phase=None):
     x0, x1, y1 = 20, W - 20, y0 + 100
     d.rounded_rectangle([x0, y0, x1, y1], radius=16, fill=CARD)
     pct_txt = "—" if pct is None else f"{int(round(pct))}%"
@@ -277,7 +277,10 @@ def draw_card(d, y0, pct, label, bar_color, reset_txt):
     if pct:
         fill_w = int((bx1 - bx0) * min(pct, 100) / 100)
         if fill_w >= 14:
-            d.rounded_rectangle([bx0, by0, bx0 + fill_w, by1], radius=7, fill=bar_color)
+            if rainbow_phase is not None:
+                fill_rainbow_rounded(img, bx0, by0, bx0 + fill_w, by1, 7, rainbow_phase)
+            else:
+                d.rounded_rectangle([bx0, by0, bx0 + fill_w, by1], radius=7, fill=bar_color)
     d.text((x0 + 22, y0 + 84), f"Resets in {reset_txt}", font=F_RESET, fill=GRAY)
 
 
@@ -298,6 +301,18 @@ def _rainbow_columns(width, period, phase):
             _rb_cols_cache.clear()
         _rb_cols_cache[key] = cols
     return cols
+
+
+def fill_rainbow_rounded(img, x0, y0, x1, y1, radius, phase, period=90.0):
+    """Fill a rounded-rect bar with the same scrolling horizontal rainbow."""
+    w, h = int(x1 - x0), int(y1 - y0)
+    if w <= 0 or h <= 0:
+        return
+    cols = _rainbow_columns(w, period, phase)
+    grad = np.broadcast_to(cols[None, :, :], (h, w, 3)).copy()
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, w - 1, h - 1], radius=radius, fill=255)
+    img.paste(Image.fromarray(grad, "RGB"), (int(x0), int(y0)), mask)
 
 
 def draw_rainbow_text(img, x, y, text, font, phase, period=90.0):
@@ -332,9 +347,10 @@ def build_usage():
         d.text(((W - tw) / 2, 14), title, font=F_TITLE, fill=WHITE)
     fresh = st["updated"] > 0 and (time.time() - st["updated"]) < STALE_SECS
     d.ellipse([W - 42, 22, W - 28, 36], fill=GREEN_DOT if fresh else GRAY)
-    draw_card(d, 58, norm_pct(st["five_hour"]["utilization"]), "Current",
-              ORANGE, fmt_reset(st["five_hour"]["resets_at"]))
-    draw_card(d, 168, norm_pct(st["seven_day"]["utilization"]), "Weekly",
+    draw_card(d, img, 58, norm_pct(st["five_hour"]["utilization"]), "Current",
+              ORANGE, fmt_reset(st["five_hour"]["resets_at"]),
+              rainbow_phase=(now * 0.6 if working else None))
+    draw_card(d, img, 168, norm_pct(st["seven_day"]["utilization"]), "Weekly",
               LIME, fmt_reset(st["seven_day"]["resets_at"]))
     status = st.get("status") or ""
     stxt = f"✳ {status}"
