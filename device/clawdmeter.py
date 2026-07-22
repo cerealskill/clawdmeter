@@ -9,6 +9,7 @@ Touching the screen flips SPLASH -> USAGE; after a few idle seconds the meter
 drifts back to the splash. Usage data is pushed over HTTP by the Mac's Claude
 Code statusline (Camino A) - only percentages ever reach this device.
 """
+import colorsys
 import glob
 import json
 import math
@@ -280,6 +281,39 @@ def draw_card(d, y0, pct, label, bar_color, reset_txt):
     d.text((x0 + 22, y0 + 84), f"Resets in {reset_txt}", font=F_RESET, fill=GRAY)
 
 
+_rb_cols_cache = {}
+
+
+def _rainbow_columns(width, period, phase):
+    """Per-column RGB for a horizontal rainbow, cached by (width, quantised phase)."""
+    key = (width, int(round(period)), int(phase * 60) % int(period * 60 or 1))
+    cols = _rb_cols_cache.get(key)
+    if cols is None:
+        cols = np.empty((width, 3), np.uint8)
+        for x in range(width):
+            h = ((x / period) - phase) % 1.0        # minus -> scrolls left->right
+            r, g, b = colorsys.hsv_to_rgb(h, 1.0, 1.0)
+            cols[x] = (int(r * 255), int(g * 255), int(b * 255))
+        if len(_rb_cols_cache) > 512:
+            _rb_cols_cache.clear()
+        _rb_cols_cache[key] = cols
+    return cols
+
+
+def draw_rainbow_text(img, x, y, text, font, phase, period=90.0):
+    """Draw `text` filled with a scrolling horizontal rainbow (glyph origin x,y)."""
+    l, t, r, b = font.getbbox(text)
+    tw, th = r - l, b - t
+    if tw <= 0 or th <= 0:
+        return
+    mask = Image.new("L", (tw, th), 0)
+    ImageDraw.Draw(mask).text((-l, -t), text, font=font, fill=255)
+    cols = _rainbow_columns(tw, period, phase)
+    grad = np.broadcast_to(cols[None, :, :], (th, tw, 3)).copy()
+    img.paste(Image.fromarray(grad, "RGB"),
+              (int(round(x + l)), int(round(y + t))), mask)
+
+
 def build_usage():
     with _lock:
         st = json.loads(json.dumps(_state))
@@ -288,13 +322,14 @@ def build_usage():
     draw_cc_logo(d, 36, 34, 2)
     now = time.time()
     working = st["updated"] > 0 and (now - st["updated"]) < ACTIVE_WINDOW
-    if working:                                   # actively coding -> animated title
+    if working:                                   # actively coding -> scrolling rainbow
         title = "Working" + "." * (1 + int(now * 2) % 3)
-        tw = d.textlength("Working...", font=F_TITLE)   # fixed centre, no jitter
+        adv = d.textlength("Working...", font=F_TITLE)   # fixed centre, no jitter
+        draw_rainbow_text(img, (W - adv) / 2, 14, title, F_TITLE, now * 0.6)
     else:
         title = "Usage"
         tw = d.textlength(title, font=F_TITLE)
-    d.text(((W - tw) / 2, 14), title, font=F_TITLE, fill=WHITE)
+        d.text(((W - tw) / 2, 14), title, font=F_TITLE, fill=WHITE)
     fresh = st["updated"] > 0 and (time.time() - st["updated"]) < STALE_SECS
     d.ellipse([W - 42, 22, W - 28, 36], fill=GREEN_DOT if fresh else GRAY)
     draw_card(d, 58, norm_pct(st["five_hour"]["utilization"]), "Current",
@@ -673,7 +708,7 @@ def render_loop():
                       "graph": build_graph}[v]())
             except Exception:
                 pass
-            time.sleep(0.4)
+            time.sleep(0.12 if (v == "usage" and active) else 0.4)  # smooth rainbow
         else:
             try:
                 if gif:
