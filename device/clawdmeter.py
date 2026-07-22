@@ -268,8 +268,14 @@ def build_usage():
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
     draw_cc_logo(d, 36, 34, 2)
-    title = "Usage"
-    tw = d.textlength(title, font=F_TITLE)
+    now = time.time()
+    working = st["updated"] > 0 and (now - st["updated"]) < ACTIVE_WINDOW
+    if working:                                   # actively coding -> animated title
+        title = "Working" + "." * (1 + int(now * 2) % 3)
+        tw = d.textlength("Working...", font=F_TITLE)   # fixed centre, no jitter
+    else:
+        title = "Usage"
+        tw = d.textlength(title, font=F_TITLE)
     d.text(((W - tw) / 2, 14), title, font=F_TITLE, fill=WHITE)
     fresh = st["updated"] > 0 and (time.time() - st["updated"]) < STALE_SECS
     d.ellipse([W - 42, 22, W - 28, 36], fill=GREEN_DOT if fresh else GRAY)
