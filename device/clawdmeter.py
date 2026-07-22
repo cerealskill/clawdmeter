@@ -358,7 +358,9 @@ def build_graph():
 
 
 # ---------- SPLASH view: full-screen Clawd face with animated eyes ----------
-# face colour by usage level: <50% orange, 50% yellow, 100% red
+# face colour by usage level: <20% green, 20% orange, 60% yellow, 100% red
+GREEN_TOP = (74, 200, 96)
+GREEN_BOT = (40, 150, 70)
 ORANGE_TOP = (240, 138, 44)
 ORANGE_BOT = (216, 96, 34)
 YELLOW_TOP = (245, 206, 54)
@@ -377,12 +379,15 @@ def _lerp3(a, b, t):
 
 
 def _level_colors(level):
-    """orange (0%) -> yellow (50%) -> red (100%)."""
-    if level <= 0.5:
-        t = level / 0.5
-        return _lerp3(ORANGE_TOP, YELLOW_TOP, t), _lerp3(ORANGE_BOT, YELLOW_BOT, t)
-    t = (level - 0.5) / 0.5
-    return _lerp3(YELLOW_TOP, RED_TOP, t), _lerp3(YELLOW_BOT, RED_BOT, t)
+    """green (<20%) -> orange (20%) -> yellow (60%) -> red (100%)."""
+    if level < 0.20:
+        return GREEN_TOP, GREEN_BOT
+    t = (level - 0.20) / 0.80          # remap 20%..100% onto 0..1
+    if t <= 0.5:
+        u = t / 0.5
+        return _lerp3(ORANGE_TOP, YELLOW_TOP, u), _lerp3(ORANGE_BOT, YELLOW_BOT, u)
+    u = (t - 0.5) / 0.5
+    return _lerp3(YELLOW_TOP, RED_TOP, u), _lerp3(YELLOW_BOT, RED_BOT, u)
 
 
 def splash_bg(level):
