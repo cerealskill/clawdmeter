@@ -261,7 +261,8 @@ def draw_cc_logo(d, cx, cy, px, color=CC_TERRA):
 
 
 # ---------- USAGE view ----------
-def draw_card(d, img, y0, pct, label, bar_color, reset_txt, rainbow_phase=None):
+def draw_card(d, img, y0, pct, label, bar_color, reset_txt, rainbow_phase=None,
+              graded=False):
     x0, x1, y1 = 20, W - 20, y0 + 100
     d.rounded_rectangle([x0, y0, x1, y1], radius=16, fill=CARD)
     pct_txt = "—" if pct is None else f"{int(round(pct))}%"
@@ -279,6 +280,8 @@ def draw_card(d, img, y0, pct, label, bar_color, reset_txt, rainbow_phase=None):
         if fill_w >= 14:
             if rainbow_phase is not None:
                 fill_rainbow_rounded(img, bx0, by0, bx0 + fill_w, by1, 7, rainbow_phase)
+            elif graded:
+                fill_graded_rounded(img, bx0, by0, bx0 + fill_w, by1, 7, bx1 - bx0)
             else:
                 d.rounded_rectangle([bx0, by0, bx0 + fill_w, by1], radius=7, fill=bar_color)
     d.text((x0 + 22, y0 + 84), f"Resets in {reset_txt}", font=F_RESET, fill=GRAY)
@@ -301,6 +304,46 @@ def _rainbow_columns(width, period, phase):
             _rb_cols_cache.clear()
         _rb_cols_cache[key] = cols
     return cols
+
+
+# Weekly bar gradient across the full track: green -> yellow -> orange -> red
+BAR_STOPS = [
+    (0.00, (60, 200, 90)),    # green (low)
+    (0.34, (245, 220, 50)),   # yellow
+    (0.67, (255, 140, 30)),   # orange
+    (1.00, (228, 55, 45)),    # red (high)
+]
+_grade_cache = {}
+
+
+def _grade_columns(full_w):
+    """Per-column green->yellow->orange->red over the whole track. Cached by width."""
+    cols = _grade_cache.get(full_w)
+    if cols is None:
+        cols = np.empty((max(1, full_w), 3), np.uint8)
+        for x in range(max(1, full_w)):
+            p = x / max(1, full_w - 1)
+            for i in range(len(BAR_STOPS) - 1):     # find the segment holding p
+                p0, c0 = BAR_STOPS[i]
+                p1, c1 = BAR_STOPS[i + 1]
+                if p <= p1 or i == len(BAR_STOPS) - 2:
+                    c = _lerp3(c0, c1, (p - p0) / (p1 - p0) if p1 > p0 else 0.0)
+                    break
+            cols[x] = (int(c[0]), int(c[1]), int(c[2]))
+        _grade_cache[full_w] = cols
+    return cols
+
+
+def fill_graded_rounded(img, x0, y0, x_end, y1, radius, full_w):
+    """Fill up to x_end with the green->orange->red gradient keyed to the full track."""
+    w, h = int(x_end - x0), int(y1 - y0)
+    if w <= 0 or h <= 0:
+        return
+    cols = _grade_columns(full_w)[:w]
+    grad = np.broadcast_to(cols[None, :, :], (h, w, 3)).copy()
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, w - 1, h - 1], radius=radius, fill=255)
+    img.paste(Image.fromarray(grad, "RGB"), (int(x0), int(y0)), mask)
 
 
 def fill_rainbow_rounded(img, x0, y0, x1, y1, radius, phase, period=90.0):
@@ -351,7 +394,7 @@ def build_usage():
               ORANGE, fmt_reset(st["five_hour"]["resets_at"]),
               rainbow_phase=(now * 0.6 if working else None))
     draw_card(d, img, 168, norm_pct(st["seven_day"]["utilization"]), "Weekly",
-              LIME, fmt_reset(st["seven_day"]["resets_at"]))
+              LIME, fmt_reset(st["seven_day"]["resets_at"]), graded=True)
     status = st.get("status") or ""
     stxt = f"✳ {status}"
     sw = d.textlength(stxt, font=F_STATUS)
