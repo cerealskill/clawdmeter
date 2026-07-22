@@ -559,6 +559,27 @@ ALERT_DK = (120, 12, 10)       # alert pulse: dark red
 ALERT_BR = (240, 60, 42)       # alert pulse: bright red
 
 
+_RB_XS = np.arange(W, dtype=np.float32)
+
+
+def rainbow_bg(t, period=150.0, speed=0.4):
+    """Full-screen scrolling rainbow face (vectorised HSV, s=v=1)."""
+    phase = (t * speed) % 1.0            # keep phase small -> no float32 precision loss
+    h = ((_RB_XS / period) - phase) % 1.0              # hue per column
+    i = np.floor(h * 6).astype(int) % 6
+    f = h * 6 - np.floor(h * 6)
+    q = 1.0 - f
+    r = np.select([i == 0, i == 1, i == 2, i == 3, i == 4, i == 5],
+                  [1, q, 0, 0, f, 1])
+    g = np.select([i == 0, i == 1, i == 2, i == 3, i == 4, i == 5],
+                  [f, 1, 1, q, 0, 0])
+    b = np.select([i == 0, i == 1, i == 2, i == 3, i == 4, i == 5],
+                  [0, 0, f, 1, 1, q])
+    rgb = (np.stack([r, g, b], 1) * 255).astype(np.uint8)   # (W, 3)
+    arr = np.broadcast_to(rgb[None, :, :], (H, W, 3)).copy()
+    return Image.fromarray(arr, "RGB")
+
+
 def alert_bg(pulse):
     """Solid red that pulses dark<->bright (0..1). Not cached (changes每frame)."""
     c = _lerp3(ALERT_DK, ALERT_BR, pulse)
@@ -680,7 +701,9 @@ def build_splash(t):
     a = _anim
 
     if alert:
-        img = alert_bg(0.5 + 0.5 * math.sin(t * 5.0))      # pulsing red
+        img = alert_bg(0.5 + 0.5 * math.sin(t * 5.0))      # pulsing red (danger wins)
+    elif working:
+        img = rainbow_bg(t)                                # animated rainbow face
     else:
         img = splash_bg(level).copy()
     d = ImageDraw.Draw(img)
