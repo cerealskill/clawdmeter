@@ -210,6 +210,21 @@ def draw_bug(d, cx, cy, s, wiggle=0.0, blink=False):
         d.rounded_rectangle([cx + ex - ew, ey - eh, cx + ex + ew, ey + eh], radius=2, fill=BG)
 
 
+def draw_claude_logo(d, cx, cy, r, color=ORANGE):
+    """Draw the Claude sunburst mark centred at (cx, cy), outer radius r."""
+    n = 11                                   # number of rays
+    w = max(2, int(round(r * 0.30)))         # ray thickness
+    inner = r * 0.14                         # rays nearly meet at the centre
+    tip = w / 2.0
+    for i in range(n):
+        a = 2 * math.pi * i / n - math.pi / 2
+        ca, sa = math.cos(a), math.sin(a)
+        x0, y0 = cx + ca * inner, cy + sa * inner
+        x1, y1 = cx + ca * r, cy + sa * r
+        d.line([(x0, y0), (x1, y1)], fill=color, width=w)
+        d.ellipse([x1 - tip, y1 - tip, x1 + tip, y1 + tip], fill=color)  # rounded tip
+
+
 # ---------- USAGE view ----------
 def draw_card(d, y0, pct, label, bar_color, reset_txt):
     x0, x1, y1 = 20, W - 20, y0 + 100
@@ -236,7 +251,7 @@ def build_usage():
         st = json.loads(json.dumps(_state))
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
-    draw_bug(d, 36, 34, 13)
+    draw_claude_logo(d, 36, 34, 15)
     title = "Usage"
     tw = d.textlength(title, font=F_TITLE)
     d.text(((W - tw) / 2, 14), title, font=F_TITLE, fill=WHITE)
@@ -259,7 +274,7 @@ def build_stats():
         fresh = _state["updated"] > 0 and (time.time() - _state["updated"]) < STALE_SECS
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
-    draw_bug(d, 36, 34, 13)
+    draw_claude_logo(d, 36, 34, 15)
     title = "Session"
     tw = d.textlength(title, font=F_TITLE)
     d.text(((W - tw) / 2, 14), title, font=F_TITLE, fill=WHITE)
@@ -313,7 +328,7 @@ def build_graph():
         fresh = _state["updated"] > 0 and (time.time() - _state["updated"]) < STALE_SECS
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
-    draw_bug(d, 36, 34, 13)
+    draw_claude_logo(d, 36, 34, 15)
     title = "Trend"
     tw = d.textlength(title, font=F_TITLE)
     d.text(((W - tw) / 2, 14), title, font=F_TITLE, fill=WHITE)
