@@ -1,0 +1,15 @@
+[Unit]
+Description=Clawdmeter - Claude Code usage TFT meter
+After=network.target
+
+[Service]
+Type=simple
+User=cereal
+ExecStart=/usr/bin/python3 /home/cereal/clawdmeter/clawdmeter.py
+Restart=always
+RestartSec=3
+# Optional: enable ntfy push alerts by setting your own private topic.
+# Environment=CLAWDMETER_NTFY_TOPIC=your-private-topic-here
+
+[Install]
+WantedBy=multi-user.target

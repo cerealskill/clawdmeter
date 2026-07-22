@@ -1,0 +1,12 @@
+# runtime state (device)
+state.json
+history.json
+splash.gif
+__pycache__/
+*.pyc
+
+# local logs (mac bridge)
+last_input.json
+
+# os
+.DS_Store
