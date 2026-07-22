@@ -53,6 +53,7 @@ HIST_MAX = 800            # samples kept (~12h at 1/min)
 PORT = 8080
 STALE_SECS = 120          # dim the "live" dot after this long with no push
 IDLE_TO_SPLASH = 20       # seconds on a data view with no touch -> back to SPLASH
+AUTO_USAGE_WINDOW = 45    # push within this many seconds => auto-show USAGE (else SPLASH)
 ACTIVE_WINDOW = 12        # seconds since last push => actively coding (awake)
 SLEEP_AFTER = 75          # seconds with no push => Clawd falls asleep
 ALERT_LEVEL = 0.90        # usage fraction at/above which the alert face kicks in
@@ -633,6 +634,14 @@ def render_loop():
     gi = 0
     last_full = 0.0
     while True:
+        now = time.time()
+        with _lock:
+            updated = _state["updated"]
+        active = updated > 0 and (now - updated) < AUTO_USAGE_WINDOW
+        # Auto-drive the view by activity, unless the user is navigating by touch:
+        # coding right now -> USAGE, stopped -> SPLASH. Touch overrides for a grace.
+        if now - _last_touch > IDLE_TO_SPLASH:
+            _view = "usage" if active else "splash"
         v = _view
         if v in ("usage", "stats", "graph"):
             try:
@@ -640,8 +649,6 @@ def render_loop():
                       "graph": build_graph}[v]())
             except Exception:
                 pass
-            if time.time() - _last_touch > IDLE_TO_SPLASH:
-                _view = "splash"
             time.sleep(0.4)
         else:
             try:
