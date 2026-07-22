@@ -108,6 +108,7 @@ _last_touch = 0.0
 _history = []             # [(ts, five_pct, seven_pct), ...]
 _hist_last = 0.0
 _alerted = False          # edge-trigger state for the 90% push
+_reset_fired = {"five_hour": None, "seven_day": None}  # resets_at already alerted
 
 
 # ---------- data helpers ----------
@@ -119,6 +120,23 @@ def norm_pct(v):
     except (TypeError, ValueError):
         return None
     return max(0.0, min(100.0, v))   # Claude Code sends 0..100 percentages
+
+
+def reset_epoch(val):
+    """Parse a resets_at value (epoch or ISO string) to epoch seconds, or None."""
+    if val is None or val == "":
+        return None
+    try:
+        if isinstance(val, (int, float)) or (
+                isinstance(val, str) and val.strip().lstrip("-").isdigit()):
+            return float(val)
+        s = str(val).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except (ValueError, OSError, OverflowError):
+        return None
 
 
 def fmt_reset(val):
@@ -769,6 +787,36 @@ def record_and_notify():
         _alerted = False
 
 
+def check_resets():
+    """Fire a push when a usage window's reset time arrives (edge-triggered).
+
+    Works without any push because it's clock-driven: the moment 'now' passes a
+    window's resets_at, quota is back. Each reset alerts once; a new (future)
+    resets_at re-arms it automatically.
+    """
+    now = time.time()
+    for key, label in (("five_hour", "5-hour"), ("seven_day", "weekly")):
+        with _lock:
+            ra = _state[key]["resets_at"]
+        ep = reset_epoch(ra)
+        if ep is None:
+            continue
+        if now >= ep and _reset_fired.get(key) != ep:
+            _reset_fired[key] = ep
+            send_ntfy("♻️ Limit reset",
+                      f"Your {label} limit just reset — full quota again")
+
+
+def reset_watch_loop():
+    """Background clock watcher so resets fire even with Claude Code closed."""
+    while True:
+        try:
+            check_resets()
+        except Exception:
+            pass
+        time.sleep(20)
+
+
 # ---------- http ----------
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -828,8 +876,15 @@ def main():
         return
     load_state()
     load_history()
+    # suppress a stale "reset" alert on boot for windows already past their reset
+    now0 = time.time()
+    for key in ("five_hour", "seven_day"):
+        ep = reset_epoch(_state[key]["resets_at"])
+        if ep is not None and now0 >= ep:
+            _reset_fired[key] = ep
     threading.Thread(target=render_loop, daemon=True).start()
     threading.Thread(target=touch_loop, daemon=True).start()
+    threading.Thread(target=reset_watch_loop, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"clawdmeter listening on :{PORT}")
     srv.serve_forever()
