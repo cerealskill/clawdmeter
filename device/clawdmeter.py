@@ -110,6 +110,8 @@ _history = []             # [(ts, five_pct, seven_pct), ...]
 _hist_last = 0.0
 _alerted = False          # edge-trigger state for the 90% push
 _reset_fired = {"five_hour": None, "seven_day": None}  # resets_at already alerted
+_done_until = 0.0         # show the "task done" celebration until this time
+DONE_SHOW_SECS = 8        # how long Clawd celebrates a finished task
 
 
 # ---------- data helpers ----------
@@ -138,6 +140,52 @@ def reset_epoch(val):
         return dt.timestamp()
     except (ValueError, OSError, OverflowError):
         return None
+
+
+def fmt_dur(secs):
+    """Short human duration: '2d 3h' / '1h 40m' / '12m' / '<1m'."""
+    secs = int(max(0, secs))
+    d, h = secs // 86400, (secs % 86400) // 3600
+    m = (secs % 3600) // 60
+    if d > 0:
+        return f"{d}d {h}h"
+    if h > 0:
+        return f"{h}h {m}m"
+    if m > 0:
+        return f"{m}m"
+    return "<1m"
+
+
+def burn_eta(idx, current_pct):
+    """Seconds until this window hits 100% at the recent burn rate, or None.
+
+    idx is the history tuple index (1 = five_hour, 2 = seven_day). Uses only the
+    current rising run so a reset dip doesn't produce a bogus (or negative) rate.
+    """
+    if current_pct is None or current_pct >= 100:
+        return None
+    now = time.time()
+    with _lock:
+        pts = [(s[0], s[idx]) for s in _history
+               if s[idx] is not None and now - s[0] <= 1200]
+    if len(pts) < 3:
+        return None
+    start = 0
+    for i in range(1, len(pts)):
+        if pts[i][1] < pts[i - 1][1] - 2:      # a drop => reset; ignore older points
+            start = i
+    pts = pts[start:]
+    if len(pts) < 3:
+        return None
+    (t0, v0), (t1, v1) = pts[0], pts[-1]
+    dt = t1 - t0
+    if dt < 120:
+        return None
+    slope = (v1 - v0) / dt                      # percent per second
+    if slope <= 0.0008:                         # essentially flat -> no ETA
+        return None
+    secs = (100 - current_pct) / slope
+    return secs if secs <= 14 * 86400 else None
 
 
 def fmt_reset(val):
@@ -261,8 +309,11 @@ def draw_cc_logo(d, cx, cy, px, color=CC_TERRA):
 
 
 # ---------- USAGE view ----------
+ETA_COL = (225, 170, 95)   # soft amber for the "time to 100%" hint
+
+
 def draw_card(d, img, y0, pct, label, bar_color, reset_txt, rainbow_phase=None,
-              graded=False):
+              graded=False, eta_txt=""):
     x0, x1, y1 = 20, W - 20, y0 + 100
     d.rounded_rectangle([x0, y0, x1, y1], radius=16, fill=CARD)
     pct_txt = "—" if pct is None else f"{int(round(pct))}%"
@@ -285,6 +336,9 @@ def draw_card(d, img, y0, pct, label, bar_color, reset_txt, rainbow_phase=None,
             else:
                 d.rounded_rectangle([bx0, by0, bx0 + fill_w, by1], radius=7, fill=bar_color)
     d.text((x0 + 22, y0 + 84), f"Resets in {reset_txt}", font=F_RESET, fill=GRAY)
+    if eta_txt:
+        ew = d.textlength(eta_txt, font=F_RESET)
+        d.text((x1 - 22 - ew, y0 + 84), eta_txt, font=F_RESET, fill=ETA_COL)
 
 
 _rb_cols_cache = {}
@@ -390,11 +444,16 @@ def build_usage():
         d.text(((W - tw) / 2, 14), title, font=F_TITLE, fill=WHITE)
     fresh = st["updated"] > 0 and (time.time() - st["updated"]) < STALE_SECS
     d.ellipse([W - 42, 22, W - 28, 36], fill=GREEN_DOT if fresh else GRAY)
-    draw_card(d, img, 58, norm_pct(st["five_hour"]["utilization"]), "Current",
+    five_pct = norm_pct(st["five_hour"]["utilization"])
+    seven_pct = norm_pct(st["seven_day"]["utilization"])
+    e5, e7 = burn_eta(1, five_pct), burn_eta(2, seven_pct)
+    draw_card(d, img, 58, five_pct, "Current",
               ORANGE, fmt_reset(st["five_hour"]["resets_at"]),
-              rainbow_phase=(now * 0.6 if working else None))
-    draw_card(d, img, 168, norm_pct(st["seven_day"]["utilization"]), "Weekly",
-              LIME, fmt_reset(st["seven_day"]["resets_at"]), graded=True)
+              rainbow_phase=(now * 0.6 if working else None),
+              eta_txt=(f"~{fmt_dur(e5)} to 100%" if e5 else ""))
+    draw_card(d, img, 168, seven_pct, "Weekly",
+              LIME, fmt_reset(st["seven_day"]["resets_at"]), graded=True,
+              eta_txt=(f"~{fmt_dur(e7)} to 100%" if e7 else ""))
     status = st.get("status") or ""
     stxt = f"✳ {status}"
     sw = d.textlength(stxt, font=F_STATUS)
@@ -694,14 +753,17 @@ def build_splash(t):
         fb = norm_pct(_state["seven_day"]["utilization"])
         updated = _state["updated"]
     level = max(fa or 0.0, fb or 0.0) / 100.0     # face colour follows worst limit
-    sleeping = (updated == 0.0) or (t - updated > SLEEP_AFTER)
-    working = (not sleeping) and updated > 0 and (t - updated) < ACTIVE_WINDOW
+    done = (_done_until > t)                            # just finished a task
+    sleeping = ((updated == 0.0) or (t - updated > SLEEP_AFTER)) and not done
+    working = (not sleeping) and (not done) and updated > 0 and (t - updated) < ACTIVE_WINDOW
     alert = (level >= ALERT_LEVEL) and not sleeping
     _update_eyes(t, busy=working)
     a = _anim
 
     if alert:
         img = alert_bg(0.5 + 0.5 * math.sin(t * 5.0))      # pulsing red (danger wins)
+    elif done:
+        img = splash_bg(0.0).copy()                        # celebratory green face
     elif working:
         img = rainbow_bg(t)                                # animated rainbow face
     else:
@@ -731,6 +793,11 @@ def build_splash(t):
             cy += 4                            # eyes down at "the work"
         draw_eye(d, ex_l + dx, cy, openness, happy)
         draw_eye(d, ex_r + dx, cy, openness, happy)
+
+    if done:
+        msg = "✓ Done!"
+        mw = d.textlength(msg, font=F_TITLE)
+        d.text(((W - mw) / 2, 230), msg, font=F_TITLE, fill=(18, 46, 24))
 
     # subtle usage line at the bottom (like the reference)
     if fa is not None or fb is not None:
@@ -782,7 +849,10 @@ def render_loop():
         # Auto-drive the view by activity, unless the user is navigating by touch:
         # coding right now -> USAGE, stopped -> SPLASH. Touch overrides for a grace.
         if now - _last_touch > IDLE_TO_SPLASH:
-            _view = "usage" if active else "splash"
+            if _done_until > now:
+                _view = "splash"                 # keep the celebration on screen
+            else:
+                _view = "usage" if active else "splash"
         v = _view
         if v in ("usage", "stats", "graph"):
             try:
@@ -793,7 +863,7 @@ def render_loop():
             time.sleep(0.12 if (v == "usage" and active) else 0.4)  # smooth rainbow
         else:
             try:
-                if gif:
+                if gif and _done_until <= now:
                     buf, dur = gif[gi % len(gif)]
                     blit_bytes(buf)
                     gi += 1
@@ -953,14 +1023,22 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json(404, {"error": "not found"})
 
+    def _read_payload(self):
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            return json.loads(self.rfile.read(n) or b"{}") if n else {}
+        except (ValueError, TypeError):
+            return None
+
     def do_POST(self):
+        if self.path == "/done":
+            self._handle_done()
+            return
         if self.path != "/update":
             self._json(404, {"error": "not found"})
             return
-        try:
-            n = int(self.headers.get("Content-Length", 0))
-            payload = json.loads(self.rfile.read(n) or b"{}")
-        except (ValueError, TypeError):
+        payload = self._read_payload()
+        if payload is None:
             self._json(400, {"error": "bad json"})
             return
         with _lock:
@@ -972,6 +1050,19 @@ class Handler(BaseHTTPRequestHandler):
             _state["updated"] = time.time()
         save_state()
         record_and_notify()
+        self._json(200, {"ok": True})
+
+    def _handle_done(self):
+        """Claude Code finished a task: celebrate on screen + push a notification."""
+        global _view, _done_until
+        payload = self._read_payload() or {}
+        proj = str(payload.get("project") or "").strip()
+        now = time.time()
+        _done_until = now + DONE_SHOW_SECS
+        _anim["happy_until"] = now + DONE_SHOW_SECS      # big smile
+        _view = "splash"
+        send_ntfy("✅ Task done",
+                  f"Claude finished in {proj}" if proj else "Claude finished the task")
         self._json(200, {"ok": True})
 
 

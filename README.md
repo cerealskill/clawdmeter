@@ -40,14 +40,14 @@ Only **percentages** ever leave your machine. No tokens, no prompts, no credenti
 
 | View | What it shows |
 |------|---------------|
-| 🟠 **Splash** | Full-screen animated Clawd — saccades, natural + double blinks, smiles. Face color tracks worst usage (orange <50% → yellow → red at 100%). Sleeps after inactivity (closed eyes + `zzz`), wakes on activity, and **squints/concentrates** while you're actively coding. |
-| 📊 **Usage** | The 5-hour and weekly rate-limit gauges with reset countdowns. |
+| 🟠 **Splash** | Full-screen animated Clawd — saccades, natural + double blinks, smiles. Face color tracks worst usage (green <20% → orange → yellow → red at 100%), turns into a **scrolling rainbow while you're coding**, and shows a green **"✓ Done!"** celebration when a task finishes. Sleeps after inactivity (closed eyes + `zzz`), wakes on activity. |
+| 📊 **Usage** | The 5-hour and weekly rate-limit gauges with reset countdowns **and a "~time to 100%" burn-rate ETA**. The title reads **"Working…"** (rainbow) while coding; the Weekly bar is graded green→yellow→orange→red. |
 | 💵 **Stats** | Session cost, context window %, lines added/removed, current model. |
 | 📈 **Graph** | Sparkline trend of both windows (5h orange, 7d lime), sampled to disk. |
 
-Extras: **≥90% alert mode** (pulsing red, worried brow, screen shake) and an optional
-**[ntfy](https://ntfy.sh) push notification** to your phone when you cross 90% (edge-triggered,
-re-arms below 85%). Auto brightness: 100% by day, 45% at night.
+The view **auto-switches to Usage while you code and back to Splash when idle** (touch still cycles all four).
+
+Extras — optional **[ntfy](https://ntfy.sh) phone push notifications** for: crossing **90%** usage (edge-triggered, re-arms below 85%), a **usage limit resetting** (clock-driven, fires even with Claude Code closed), and a **task finishing**. Plus **≥90% alert mode** (pulsing red, worried brow, screen shake) and auto brightness (100% by day, 45% at night).
 
 ---
 
@@ -138,19 +138,25 @@ Health check: `curl http://<pi>:8080/health`
 
 ```bash
 mkdir -p ~/.claude/clawdmeter
-cp mac/statusline.py ~/.claude/clawdmeter/
-chmod +x ~/.claude/clawdmeter/statusline.py
+cp mac/statusline.py mac/task_done.py ~/.claude/clawdmeter/
+chmod +x ~/.claude/clawdmeter/*.py
 ```
 
-### 2. Wire it as your status line
+### 2. Wire the status line and the "task done" hook
 
-In `~/.claude/settings.json`:
+In `~/.claude/settings.json`. The `statusLine` feeds usage to the meter; the
+`Stop` hook makes Clawd celebrate (and push a notification) when a task finishes:
 
 ```json
 {
   "statusLine": {
     "type": "command",
     "command": "python3 ~/.claude/clawdmeter/statusline.py"
+  },
+  "hooks": {
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "python3 ~/.claude/clawdmeter/task_done.py" } ] }
+    ]
   }
 }
 ```
@@ -198,7 +204,8 @@ Drop a `~/clawdmeter/splash.gif` on the Pi to replace the mascot with your own a
 
 ```
 device/   clawdmeter.py · clawdmeter.service · requirements.txt   # runs on the Pi
-mac/      statusline.py                                           # Claude Code status line hook
+mac/      statusline.py       # Claude Code status line -> usage push
+          task_done.py        # Claude Code `Stop` hook -> "task done" celebration
 ```
 
 ---
