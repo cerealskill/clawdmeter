@@ -138,14 +138,16 @@ Health check: `curl http://<pi>:8080/health`
 
 ```bash
 mkdir -p ~/.claude/clawdmeter
-cp mac/statusline.py mac/task_done.py ~/.claude/clawdmeter/
+cp mac/statusline.py mac/task_done.py mac/task_busy.py ~/.claude/clawdmeter/
 chmod +x ~/.claude/clawdmeter/*.py
 ```
 
 ### 2. Wire the status line and the "task done" hook
 
 In `~/.claude/settings.json`. The `statusLine` feeds usage to the meter; the
-`Stop` hook makes Clawd celebrate (and push a notification) when a task finishes:
+`UserPromptSubmit` hook keeps the **"Working…"** animation lit for the whole task
+(independent of status-line refresh rate); the `Stop` hook makes Clawd celebrate
+(and push a notification) when it finishes:
 
 ```json
 {
@@ -154,6 +156,9 @@ In `~/.claude/settings.json`. The `statusLine` feeds usage to the meter; the
     "command": "python3 ~/.claude/clawdmeter/statusline.py"
   },
   "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "python3 ~/.claude/clawdmeter/task_busy.py" } ] }
+    ],
     "Stop": [
       { "hooks": [ { "type": "command", "command": "python3 ~/.claude/clawdmeter/task_done.py" } ] }
     ]
@@ -212,7 +217,8 @@ Drop a `~/clawdmeter/splash.gif` on the Pi to replace the mascot with your own a
 ```
 device/   clawdmeter.py · clawdmeter.service · requirements.txt   # runs on the Pi
 mac/      statusline.py       # Claude Code status line -> usage push
-          task_done.py        # Claude Code `Stop` hook -> "task done" celebration
+          task_busy.py        # `UserPromptSubmit` hook -> "Working…" animation
+          task_done.py        # `Stop` hook -> "task done" celebration + push
 ```
 
 ---

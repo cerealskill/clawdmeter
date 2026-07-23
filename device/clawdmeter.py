@@ -118,6 +118,8 @@ _done_until = 0.0         # show the "task done" celebration until this time
 DONE_SHOW_SECS = 8        # how long Clawd celebrates a finished task
 _last_done_ntfy = 0.0     # debounce: last time a "task done" push was sent
 DONE_NTFY_COOLDOWN = 25   # collapse a burst of Stop events into one push
+_busy_until = 0.0         # "working" from a prompt-submit until Stop (or TTL)
+BUSY_TTL = 180            # safety expiry if no Stop arrives
 
 
 # ---------- data helpers ----------
@@ -439,7 +441,7 @@ def build_usage():
     d = ImageDraw.Draw(img)
     draw_cc_logo(d, 36, 34, 2)
     now = time.time()
-    working = st["updated"] > 0 and (now - st["updated"]) < ACTIVE_WINDOW
+    working = (_busy_until > now) or (st["updated"] > 0 and (now - st["updated"]) < ACTIVE_WINDOW)
     if working:                                   # actively coding -> scrolling rainbow
         title = "Working" + "." * (1 + int(now * 2) % 3)
         adv = d.textlength("Working...", font=F_TITLE)   # fixed centre, no jitter
@@ -760,8 +762,10 @@ def build_splash(t):
         updated = _state["updated"]
     level = max(fa or 0.0, fb or 0.0) / 100.0     # face colour follows worst limit
     done = (_done_until > t)                            # just finished a task
-    sleeping = ((updated == 0.0) or (t - updated > SLEEP_AFTER)) and not done
-    working = (not sleeping) and (not done) and updated > 0 and (t - updated) < ACTIVE_WINDOW
+    busy = (_busy_until > t)                            # a prompt is being worked on
+    sleeping = ((updated == 0.0) or (t - updated > SLEEP_AFTER)) and not done and not busy
+    working = (not sleeping) and (not done) and (
+        busy or (updated > 0 and (t - updated) < ACTIVE_WINDOW))
     alert = (level >= ALERT_LEVEL) and not sleeping
     _update_eyes(t, busy=working)
     a = _anim
@@ -851,7 +855,7 @@ def render_loop():
         now = time.time()
         with _lock:
             updated = _state["updated"]
-        active = updated > 0 and (now - updated) < AUTO_USAGE_WINDOW
+        active = (_busy_until > now) or (updated > 0 and (now - updated) < AUTO_USAGE_WINDOW)
         # Auto-drive the view by activity, unless the user is navigating by touch:
         # coding right now -> USAGE, stopped -> SPLASH. Touch overrides for a grace.
         if now - _last_touch > IDLE_TO_SPLASH:
@@ -1040,6 +1044,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/done":
             self._handle_done()
             return
+        if self.path == "/busy":
+            self._handle_busy()
+            return
         if self.path != "/update":
             self._json(404, {"error": "not found"})
             return
@@ -1058,13 +1065,22 @@ class Handler(BaseHTTPRequestHandler):
         record_and_notify()
         self._json(200, {"ok": True})
 
+    def _handle_busy(self):
+        """A prompt was submitted: mark 'working' so Clawd shows the busy animation."""
+        global _view, _busy_until
+        self._read_payload()                             # drain body (ignored)
+        _busy_until = time.time() + BUSY_TTL
+        _view = "usage"                                  # show the Working… screen
+        self._json(200, {"ok": True})
+
     def _handle_done(self):
         """Claude Code finished a task: celebrate on screen + push a notification."""
-        global _view, _done_until, _last_done_ntfy
+        global _view, _done_until, _last_done_ntfy, _busy_until
         payload = self._read_payload() or {}
         proj = str(payload.get("project") or "").strip()
         notify = payload.get("notify", True)             # False for agent-driven runs
         now = time.time()
+        _busy_until = 0.0                                # task ended -> stop "working"
         _done_until = now + DONE_SHOW_SECS               # celebrate on screen regardless
         _anim["happy_until"] = now + DONE_SHOW_SECS      # big smile
         _view = "splash"
