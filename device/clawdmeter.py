@@ -303,17 +303,38 @@ CC_ART = [
 ]
 
 
-def draw_cc_logo(d, cx, cy, px, color=CC_TERRA):
-    """Draw the Claude Code pixel mascot centred at (cx, cy); px = cell size."""
-    gw, gh = len(CC_ART[0]), len(CC_ART)
+# two leg frames for the walk cycle (replace the bottom 2 rows of CC_ART)
+CC_WALK_LEGS = [
+    ["..#..#...#..#..", "..#..#...#..#.."],   # stance: legs spread
+    ["...#.#...#.#...", "...#.#...#.#..."],   # step: legs together
+]
+
+
+def draw_cc_logo(d, cx, cy, px, color=CC_TERRA, step=None):
+    """Draw the Claude Code pixel mascot centred at (cx, cy); px = cell size.
+    step (0/1) swaps the legs for a walk cycle; None = default idle legs."""
+    art = CC_ART if step is None else CC_ART[:9] + CC_WALK_LEGS[step % 2]
+    gw, gh = len(art[0]), len(art)
     ox = cx - gw * px / 2.0
     oy = cy - gh * px / 2.0
-    for gy, row in enumerate(CC_ART):
+    for gy, row in enumerate(art):
         for gx, ch in enumerate(row):
             if ch == "#":
                 x = ox + gx * px
                 y = oy + gy * px
                 d.rectangle([x, y, x + px - 1, y + px - 1], fill=color)
+
+
+def draw_header_zzz(d, t):
+    """Small floating zZz next to the header logo (idle Usage view)."""
+    phase = (t * 0.5) % 1.0
+    bx, by = 52, 30
+    for i, ch in enumerate(("z", "Z", "z")):
+        f = (phase + i / 3.0) % 1.0
+        x = bx + i * 9 + f * 4
+        y = by - i * 9 - f * 6
+        c = 150 + int(70 * (1 - f))
+        d.text((x, y), ch, font=_f("DejaVuSans-Bold.ttf", 11 + i * 3), fill=(c, c, 210))
 
 
 # ---------- USAGE view ----------
@@ -439,17 +460,25 @@ def build_usage():
         st = json.loads(json.dumps(_state))
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
-    draw_cc_logo(d, 36, 34, 2)
     now = time.time()
     working = (_busy_until > now) or (st["updated"] > 0 and (now - st["updated"]) < ACTIVE_WINDOW)
     if working:                                   # actively coding -> scrolling rainbow
         title = "Working" + "." * (1 + int(now * 2) % 3)
         adv = d.textlength("Working...", font=F_TITLE)   # fixed centre, no jitter
-        draw_rainbow_text(img, (W - adv) / 2, 14, title, F_TITLE, now * 0.6)
+        w_left = (W - adv) / 2
+        draw_rainbow_text(img, w_left, 14, title, F_TITLE, now * 0.6)
+        # Clawd walks from home toward the "W" and back (ping-pong), legs cycling
+        home_cx, target_cx = 36.0, w_left - 21.0
+        tri = abs(((now * 0.6) % 2.0) - 1.0)         # 0 -> 1 -> 0
+        cx = home_cx + (target_cx - home_cx) * tri
+        bob = -abs(math.sin(now * 5.0)) * 2          # little hop while stepping
+        draw_cc_logo(d, cx, 34 + bob, 2, step=int(now * 5) % 2)
     else:
         title = "Usage"
         tw = d.textlength(title, font=F_TITLE)
         d.text(((W - tw) / 2, 14), title, font=F_TITLE, fill=WHITE)
+        draw_cc_logo(d, 36, 34, 2)
+        draw_header_zzz(d, now)                       # asleep -> little zZz
     fresh = st["updated"] > 0 and (time.time() - st["updated"]) < STALE_SECS
     d.ellipse([W - 42, 22, W - 28, 36], fill=GREEN_DOT if fresh else GRAY)
     five_pct = norm_pct(st["five_hour"]["utilization"])
