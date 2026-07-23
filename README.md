@@ -181,7 +181,8 @@ history sampling, alert thresholds). Runtime overrides via environment:
 
 | Variable | Where | Default | Purpose |
 |----------|-------|---------|---------|
-| `CLAWDMETER_NTFY_TOPIC` | Pi | *(empty → off)* | Private ntfy topic for 90% phone alerts. |
+| `CLAWDMETER_NTFY_TOPIC` | Pi | *(empty → off)* | Private ntfy topic for phone alerts. |
+| `CLAWDMETER_MUTE_PROJECTS` | Pi | *(empty)* | Comma-separated folder names whose "task done" ntfy is suppressed (screen still celebrates). |
 | `CLAWDMETER_URL` | Mac | `http://raspi-one.local:8080/update` | Meter endpoint. |
 
 Drop a `~/clawdmeter/splash.gif` on the Pi to replace the mascot with your own animation.

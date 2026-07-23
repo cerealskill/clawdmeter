@@ -47,6 +47,10 @@ GIF_FILE = os.path.join(HOME, "splash.gif")
 # choice (anyone who knows the topic can read/publish to it). Empty = disabled.
 NTFY_TOPIC = os.environ.get("CLAWDMETER_NTFY_TOPIC", "")
 NTFY_URL = ("https://ntfy.sh/" + NTFY_TOPIC) if NTFY_TOPIC else ""
+# Projects whose "task done" ntfy push should be suppressed (screen still
+# celebrates). Comma-separated folder names, case-insensitive.
+MUTE_PROJECTS = {p.strip().lower() for p in
+                 os.environ.get("CLAWDMETER_MUTE_PROJECTS", "").split(",") if p.strip()}
 NOTIFY_AT = 0.90          # push when worst usage crosses this
 NOTIFY_REARM = 0.85       # re-arm once it drops back below this
 HIST_EVERY = 55           # seconds between history samples
@@ -1061,8 +1065,9 @@ class Handler(BaseHTTPRequestHandler):
         _done_until = now + DONE_SHOW_SECS
         _anim["happy_until"] = now + DONE_SHOW_SECS      # big smile
         _view = "splash"
-        send_ntfy("✅ Task done",
-                  f"Claude finished in {proj}" if proj else "Claude finished the task")
+        if proj.lower() not in MUTE_PROJECTS:            # muted projects: screen only
+            send_ntfy("✅ Task done",
+                      f"Claude finished in {proj}" if proj else "Claude finished the task")
         self._json(200, {"ok": True})
 
 
