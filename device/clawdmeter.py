@@ -770,10 +770,10 @@ def build_splash(t):
     _update_eyes(t, busy=working)
     a = _anim
 
-    if alert:
-        img = alert_bg(0.5 + 0.5 * math.sin(t * 5.0))      # pulsing red (danger wins)
-    elif done:
-        img = splash_bg(0.0).copy()                        # celebratory green face
+    if done:
+        img = splash_bg(0.0).copy()                        # celebratory green (wins)
+    elif alert:
+        img = alert_bg(0.5 + 0.5 * math.sin(t * 5.0))      # pulsing red (danger)
     elif working:
         img = rainbow_bg(t)                                # animated rainbow face
     else:
@@ -786,7 +786,7 @@ def build_splash(t):
         draw_closed_eye(d, ex_l, cy)
         draw_closed_eye(d, ex_r, cy)
         draw_zzz(d, t)
-    elif alert:
+    elif alert and not done:
         j = int(round(math.sin(t * 22) * 3))               # nervous shake
         draw_eye(d, ex_l + j, 150, 1.0)
         draw_eye(d, ex_r + j, 150, 1.0)
