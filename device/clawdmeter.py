@@ -1063,13 +1063,14 @@ class Handler(BaseHTTPRequestHandler):
         global _view, _done_until, _last_done_ntfy
         payload = self._read_payload() or {}
         proj = str(payload.get("project") or "").strip()
+        notify = payload.get("notify", True)             # False for agent-driven runs
         now = time.time()
-        _done_until = now + DONE_SHOW_SECS
+        _done_until = now + DONE_SHOW_SECS               # celebrate on screen regardless
         _anim["happy_until"] = now + DONE_SHOW_SECS      # big smile
         _view = "splash"
         muted = proj.lower() in MUTE_PROJECTS
         debounced = (now - _last_done_ntfy) < DONE_NTFY_COOLDOWN   # collapse bursts
-        if not muted and not debounced:
+        if notify and not muted and not debounced:
             _last_done_ntfy = now
             send_ntfy("✅ Task done",
                       f"Claude finished in {proj}" if proj else "Claude finished the task")

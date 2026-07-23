@@ -18,21 +18,21 @@ DONE_URL = BASE.rsplit("/", 1)[0] + "/done"
 
 def is_agent_run():
     """True when Claude is driven by OpenClaw (or another agent), not the
-    interactive Claude Code terminal. Those runs notify through their own
-    channels, so we stay quiet. Real `claude` in a terminal sets no OPENCLAW_*."""
+    interactive Claude Code terminal. Those runs already notify through their own
+    channels, so we suppress the ntfy push (but still let Clawd celebrate on the
+    screen). Real `claude` in a terminal sets no OPENCLAW_* env vars."""
     return any(k == "OPENCLAW" or k.startswith("OPENCLAW_") for k in os.environ)
 
 
 def main():
-    if is_agent_run():
-        return
     try:
         data = json.load(sys.stdin)
     except Exception:
         data = {}
     cwd = data.get("cwd") or data.get("workspace", {}).get("current_dir") or ""
     proj = os.path.basename(cwd.rstrip("/")) if cwd else ""
-    payload = json.dumps({"project": proj})
+    # Always let the meter celebrate; only the phone push is gated to the terminal.
+    payload = json.dumps({"project": proj, "notify": not is_agent_run()})
     try:
         subprocess.Popen(
             ["curl", "-s", "-m", "2", "-X", "POST", DONE_URL,

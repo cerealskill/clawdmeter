@@ -161,9 +161,11 @@ In `~/.claude/settings.json`. The `statusLine` feeds usage to the meter; the
 }
 ```
 
-The hook only fires for the **interactive Claude Code terminal** — runs driven
-by an agent harness (detected via `OPENCLAW*` env vars) are skipped, since those
-notify through their own channels. A short debounce collapses bursts into one push.
+Clawd **always celebrates on screen** when a task finishes, but the **ntfy push**
+is only sent from the **interactive Claude Code terminal**: agent-driven runs
+(detected via `OPENCLAW*` env vars) still animate the meter but skip the phone
+push, since those notify through their own channels. A short debounce collapses
+bursts into one push.
 
 ### 3. Point it at your Pi (optional)
 
