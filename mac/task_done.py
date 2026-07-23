@@ -16,7 +16,16 @@ BASE = os.environ.get("CLAWDMETER_URL", "http://raspi-one.local:8080/update")
 DONE_URL = BASE.rsplit("/", 1)[0] + "/done"
 
 
+def is_agent_run():
+    """True when Claude is driven by OpenClaw (or another agent), not the
+    interactive Claude Code terminal. Those runs notify through their own
+    channels, so we stay quiet. Real `claude` in a terminal sets no OPENCLAW_*."""
+    return any(k == "OPENCLAW" or k.startswith("OPENCLAW_") for k in os.environ)
+
+
 def main():
+    if is_agent_run():
+        return
     try:
         data = json.load(sys.stdin)
     except Exception:

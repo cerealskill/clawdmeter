@@ -116,6 +116,8 @@ _alerted = False          # edge-trigger state for the 90% push
 _reset_fired = {"five_hour": None, "seven_day": None}  # resets_at already alerted
 _done_until = 0.0         # show the "task done" celebration until this time
 DONE_SHOW_SECS = 8        # how long Clawd celebrates a finished task
+_last_done_ntfy = 0.0     # debounce: last time a "task done" push was sent
+DONE_NTFY_COOLDOWN = 25   # collapse a burst of Stop events into one push
 
 
 # ---------- data helpers ----------
@@ -1058,14 +1060,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle_done(self):
         """Claude Code finished a task: celebrate on screen + push a notification."""
-        global _view, _done_until
+        global _view, _done_until, _last_done_ntfy
         payload = self._read_payload() or {}
         proj = str(payload.get("project") or "").strip()
         now = time.time()
         _done_until = now + DONE_SHOW_SECS
         _anim["happy_until"] = now + DONE_SHOW_SECS      # big smile
         _view = "splash"
-        if proj.lower() not in MUTE_PROJECTS:            # muted projects: screen only
+        muted = proj.lower() in MUTE_PROJECTS
+        debounced = (now - _last_done_ntfy) < DONE_NTFY_COOLDOWN   # collapse bursts
+        if not muted and not debounced:
+            _last_done_ntfy = now
             send_ntfy("✅ Task done",
                       f"Claude finished in {proj}" if proj else "Claude finished the task")
         self._json(200, {"ok": True})

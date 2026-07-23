@@ -161,6 +161,10 @@ In `~/.claude/settings.json`. The `statusLine` feeds usage to the meter; the
 }
 ```
 
+The hook only fires for the **interactive Claude Code terminal** — runs driven
+by an agent harness (detected via `OPENCLAW*` env vars) are skipped, since those
+notify through their own channels. A short debounce collapses bursts into one push.
+
 ### 3. Point it at your Pi (optional)
 
 The default is `http://raspi-one.local:8080/update` (mDNS, survives IP changes).
